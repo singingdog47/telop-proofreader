@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>映像テロップ校閲システム</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>映像テロップ校閲システム</h1>
+      <p>共有Web版 / Google Drive不使用</p>
+    </div>
+    <div class="header-actions">
+      <span id="userBadge" class="user-badge">接続中...</span>
+      <a id="settingsLink" class="settings-link hidden" href="./settings.html">辞書・運用者管理</a>
+      <button id="logoutButton">ログアウト</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="systemMessage" class="system-message hidden"></div>
+
+    <section class="panel">
+      <h2>1. 原稿入力</h2>
+      <textarea id="sourceText" rows="14" placeholder="ここにテロップ原稿を貼り付けてください。1行=1テロップ想定です。"></textarea>
+      <div class="actions">
+        <button id="runCheck" class="primary">校閲する</button>
+        <button id="clearText">クリア</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>2. 校閲結果</h2>
+      <div id="summary" class="summary"></div>
+      <div class="confidence-legend" aria-label="確信度の説明">
+        <span><b class="confidence-badge confidence-high">確信度 高</b> 辞書・明示ルールに基づく</span>
+        <span><b class="confidence-badge confidence-medium">確信度 中</b> 類似・パターン判定</span>
+        <span><b class="confidence-badge confidence-low">確信度 低</b> 推定。目視確認を優先</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>行</th><th>判定</th><th>種別</th><th>確信度</th><th>原文</th><th>候補</th><th>理由</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button id="copyAiPrompt">AI確認用テキストをコピー</button>
+        <button id="downloadCsv">CSV出力</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title-row">
+        <div>
+          <h2 id="logTitle">3. 運用ログ</h2>
+          <p class="hint">原稿本文は保存しません。日時・運用者・行数・指摘数のみ共有DBに記録します。</p>
+        </div>
+        <button id="refreshButton">辞書・ログを再読込</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>日時</th><th>運用者</th><th>行数</th><th>指摘数</th></tr></thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./src/config.js"></script>
+  <script src="./src/backend.js"></script>
+  <script src="./src/app.js"></script>
+</body>
+</html>
