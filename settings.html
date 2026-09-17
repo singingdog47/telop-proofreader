@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>辞書・運用者管理 | 映像テロップ校閲システム</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>辞書・運用者管理</h1>
+      <p>管理者専用</p>
+    </div>
+    <div class="header-actions">
+      <span id="userBadge" class="user-badge">接続中...</span>
+      <a class="settings-link" href="./index.html">← 校閲画面</a>
+      <button id="logoutButton">ログアウト</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="systemMessage" class="system-message hidden"></div>
+
+    <section class="panel">
+      <div class="section-title-row">
+        <div>
+          <h2>新規登録</h2>
+          <p class="hint">必要な運用者の登録が終わったら停止してください。停止中は新規アカウントを作成できません。</p>
+        </div>
+        <label class="toggle-row">
+          <input id="registrationToggle" type="checkbox" />
+          <span id="registrationLabel">確認中...</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>運用者管理</h2>
+      <p class="hint">最初の登録ユーザーは管理者、以降は運用者です。管理者は他ユーザーの権限を変更できます。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>表示名</th><th>メール</th><th>権限</th><th>登録日時</th><th></th></tr></thead>
+          <tbody id="membersBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel grid2">
+      <div>
+        <h2>固有名詞辞書</h2>
+        <div class="inline-form">
+          <input id="properWrong" placeholder="誤表記・揺れ 例: Mr.children" />
+          <input id="properCorrect" placeholder="正式表記 例: Mr.Children" />
+          <button id="addProper">追加</button>
+        </div>
+        <table>
+          <thead><tr><th>誤表記/揺れ</th><th>正式表記</th><th></th></tr></thead>
+          <tbody id="properBody"></tbody>
+        </table>
+      </div>
+
+      <div>
+        <h2>表記ルール・NG集</h2>
+        <div class="inline-form">
+          <input id="ruleWrong" placeholder="NG表記" />
+          <input id="ruleCorrect" placeholder="推奨表記" />
+          <button id="addRule">追加</button>
+        </div>
+        <table>
+          <thead><tr><th>NG表記</th><th>推奨表記</th><th></th></tr></thead>
+          <tbody id="rulesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>字体・フォント注意辞書</h2>
+      <p class="hint">フォントや字形環境で見え方が変わりやすい文字・語句を登録します。</p>
+      <div class="inline-form">
+        <input id="glyphTerm" placeholder="注意語 例: 鯖江市" />
+        <input id="glyphNote" placeholder="注意内容" />
+        <button id="addGlyph">追加</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>注意語</th><th>注意内容</th><th></th></tr></thead>
+          <tbody id="glyphBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>読み・ルビ注意辞書</h2>
+      <p class="hint">難読地名・人名などの正しい読みを登録します。</p>
+      <div class="inline-form four-cols">
+        <input id="readingTerm" placeholder="語句 例: 志賀町" />
+        <input id="readingValue" placeholder="正しい読み 例: しかまち" />
+        <input id="readingNote" placeholder="注意内容" />
+        <button id="addReading">追加</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>語句</th><th>読み</th><th>注意内容</th><th></th></tr></thead>
+          <tbody id="readingBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>正式名称・略称注意辞書</h2>
+      <p class="hint">省略名・通称・旧称などに対し、正式名称候補を登録します。</p>
+      <div class="inline-form four-cols">
+        <input id="officialVariant" placeholder="表記例 例: NHK児童劇団" />
+        <input id="officialName" placeholder="正式名称候補" />
+        <input id="officialNote" placeholder="注意内容" />
+        <button id="addOfficialName">追加</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>省略・通称等</th><th>正式名称候補</th><th>注意内容</th><th></th></tr></thead>
+          <tbody id="officialNameBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./src/config.js"></script>
+  <script src="./src/backend.js"></script>
+  <script src="./src/settings.js"></script>
+</body>
+</html>
