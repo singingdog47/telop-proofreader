@@ -1,0 +1,353 @@
+const state = {
+  rules: [],
+  proper: [],
+  glyphCautions: [],
+  readingCautions: [],
+  officialNameCautions: [],
+  lastResults: [],
+  profile: null
+};
+
+function normalize(s){
+  return String(s ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
+}
+
+function showSystemMessage(text, type=""){
+  const el = document.getElementById("systemMessage");
+  el.textContent = text;
+  el.className = `system-message ${type}`.trim();
+}
+
+function clearSystemMessage(){
+  document.getElementById("systemMessage").classList.add("hidden");
+}
+
+function isKnownProperCandidate(candidate){
+  const c = normalize(candidate);
+  if(!c) return false;
+  return state.proper.some(p => {
+    const a = normalize(p.wrong);
+    const b = normalize(p.correct);
+    return c === a || c === b || a.includes(c) || b.includes(c) || c.includes(a) || c.includes(b);
+  });
+}
+
+function detectUnknownProperCandidates(text){
+  const candidates = [];
+  const add = (value, confidence, why) => {
+    const v = value.trim();
+    if(!v || v.length < 2 || isKnownProperCandidate(v)) return;
+    if(candidates.some(x => x.value === v)) return;
+    candidates.push({value:v, confidence, why});
+  };
+
+  const geoOrg = text.match(/[一-龠々ヶヵぁ-んァ-ヶーA-Za-z0-9・.＆&]+(?:都|道|府|県|市|区|町|村|郡|駅|空港|公園|通り|川|河|山|岳|湖|湾|島|大学|高校|中学校|小学校|病院|銀行|証券|放送|テレビ|新聞|庁|省|局|協会|連盟|研究所|センター|ホテル|ホール|劇場|美術館|博物館)/g) || [];
+  geoOrg.forEach(v => add(v, "高", "地名・組織・施設名で使われやすい接尾辞を含みます。"));
+
+  const latin = text.match(/\b(?:[A-Z][A-Za-z0-9]*(?:[.\-][A-Za-z0-9]+)*|[A-Z]{2,}|[A-Za-z]+[A-Z][A-Za-z0-9]*)\b/g) || [];
+  latin.forEach(v => add(v, "中", "英字の大文字表記・ブランド名・団体名の可能性があります。"));
+
+  const kata = text.match(/[ァ-ヶー]{4,}/g) || [];
+  kata.forEach(v => add(v, "低", "カタカナの固有名詞・商品名・人名等の可能性があります。"));
+
+  const quoted = [...text.matchAll(/[「『“"]([^」』”"]{2,30})[」』”"]/g)].map(m=>m[1]);
+  quoted.forEach(v => add(v, "低", "かぎ括弧内の名称・作品名等の可能性があります。"));
+
+  return candidates;
+}
+
+function levenshtein(a,b){
+  a = normalize(a); b = normalize(b);
+  const dp = Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+  for(let i=0;i<=a.length;i++) dp[i][0]=i;
+  for(let j=0;j<=b.length;j++) dp[0][j]=j;
+  for(let i=1;i<=a.length;i++){
+    for(let j=1;j<=b.length;j++){
+      const c = a[i-1]===b[j-1]?0:1;
+      dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+c);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function checkLine(line, lineNo){
+  const out = [];
+  const text = line.trim();
+  if(!text) return out;
+
+  for(const r of state.rules){
+    if(text.includes(r.wrong)){
+      out.push({
+        line:lineNo, verdict:"NG", type:"表記ルール", confidence:"高", source:text,
+        suggestion:text.split(r.wrong).join(r.correct),
+        reason:`「${r.wrong}」は登録済みNG表記です。`
+      });
+    }
+  }
+
+  for(const p of state.proper){
+    if(text.includes(p.wrong)){
+      out.push({
+        line:lineNo, verdict:"注意", type:"固有名詞", confidence:"高", source:text,
+        suggestion:text.split(p.wrong).join(p.correct),
+        reason:`登録済み正式表記「${p.correct}」と異なります。`
+      });
+    }
+  }
+
+  for(const n of state.officialNameCautions){
+    if(text.includes(n.variant)){
+      out.push({
+        line:lineNo, verdict:"注意", type:"正式名称注意", confidence:"高", source:text,
+        suggestion:text.split(n.variant).join(n.official),
+        reason:`「${n.variant}」は「${n.official}」の可能性があります。${n.note || "正式名称を確認してください。"}`
+      });
+    }
+  }
+
+  for(const r of state.readingCautions){
+    if(text.includes(r.term)){
+      out.push({
+        line:lineNo, verdict:"注意", type:"読み・ルビ注意", confidence:"高", source:text,
+        suggestion:`${r.term}（${r.reading}）`,
+        reason:`「${r.term}」の読みは「${r.reading}」です。${r.note || "読み・ルビを確認してください。"}`
+      });
+    }
+  }
+
+  for(const g of state.glyphCautions){
+    if(text.includes(g.term)){
+      out.push({
+        line:lineNo, verdict:"注意", type:"字体注意", confidence:"高", source:text,
+        suggestion:"",
+        reason:`「${g.term}」: ${g.note}`
+      });
+    }
+  }
+
+  const unknownProper = detectUnknownProperCandidates(text);
+  for(const c of unknownProper){
+    out.push({
+      line:lineNo, verdict:"注意", type:"未登録固有名詞", confidence:c.confidence, source:text,
+      suggestion:"",
+      reason:`「${c.value}」は固有名詞の可能性があります。${c.why} 正式表記を確認してください。`
+    });
+  }
+
+  for(const c of unknownProper){
+    const looksLikePlace = /(?:都|道|府|県|市|区|町|村|郡|駅|川|河|山|岳|湖|湾|島)$/.test(c.value);
+    const hasRegisteredReading = state.readingCautions.some(r => r.term === c.value);
+    if(looksLikePlace && !hasRegisteredReading){
+      out.push({
+        line:lineNo, verdict:"注意", type:"読み要確認",
+        confidence:c.confidence === "高" ? "中" : "低",
+        source:text, suggestion:"",
+        reason:`「${c.value}」は地名の可能性があります。読み方・ルビは推測せず、自治体・公式資料などで確認してください。`
+      });
+    }
+  }
+
+  const tokens = text.split(/[、。,.!！?？「」『』（）()\s]+/).filter(Boolean);
+  for(const token of tokens){
+    if(token.length < 4) continue;
+    let best = null;
+    for(const p of state.proper){
+      const d = levenshtein(token, p.correct);
+      const threshold = Math.max(1, Math.floor(p.correct.length * 0.18));
+      if(d > 0 && d <= threshold){
+        if(!best || d < best.d) best = {d, correct:p.correct};
+      }
+    }
+    if(best && !out.some(x=>x.type==="固有名詞" && x.suggestion.includes(best.correct))){
+      out.push({
+        line:lineNo, verdict:"注意", type:"固有名詞候補", confidence:"中", source:text,
+        suggestion:best.correct,
+        reason:`「${token}」は登録済み固有名詞「${best.correct}」に近い表記です。正式表記を確認してください。`
+      });
+    }
+  }
+
+  return out;
+}
+
+function confidenceClass(confidence){
+  if(confidence === "高") return "confidence-high";
+  if(confidence === "中") return "confidence-medium";
+  return "confidence-low";
+}
+
+function confidenceDescription(confidence){
+  if(confidence === "高") return "登録済み辞書・明示ルール等に基づく高確度の指摘";
+  if(confidence === "中") return "類似判定・パターン判定に基づく確認推奨";
+  return "推定要素が大きい候補。誤検出の可能性があるため目視確認";
+}
+
+function renderResults(results){
+  const body = document.getElementById("resultsBody");
+  body.innerHTML="";
+  results.forEach(r=>{
+    const tr=document.createElement("tr");
+    const verdictCls = r.verdict==="NG"?"ng":"warn";
+    const confidence = r.confidence || "低";
+    const confCls = confidenceClass(confidence);
+    tr.classList.add(confCls);
+    tr.innerHTML = `
+      <td>${r.line}</td>
+      <td><span class="badge ${verdictCls}">${r.verdict}</span></td>
+      <td>${escapeHtml(r.type)}</td>
+      <td><span class="confidence-badge ${confCls}" title="${escapeHtml(confidenceDescription(confidence))}">確信度 ${confidence}</span></td>
+      <td>${escapeHtml(r.source)}</td>
+      <td>${escapeHtml(r.suggestion)}</td>
+      <td>${escapeHtml(r.reason)}</td>`;
+    body.appendChild(tr);
+  });
+
+  const counts = {高:0, 中:0, 低:0};
+  results.forEach(r => counts[r.confidence || "低"]++);
+  const summary = document.getElementById("summary");
+  if(results.length){
+    summary.innerHTML = `
+      <strong>${results.length}件</strong>の注意・指摘があります。
+      <span class="summary-count high">高 ${counts.高}</span>
+      <span class="summary-count medium">中 ${counts.中}</span>
+      <span class="summary-count low">低 ${counts.低}</span>
+      ${counts.低 ? '<span class="low-note">※ 確信度「低」は誤検出の可能性があるため、特に目視確認してください。</span>' : ''}
+    `;
+  } else {
+    summary.textContent = "登録済みルールでは指摘はありません。";
+  }
+}
+
+function renderLogs(logs){
+  const body = document.getElementById("logBody");
+  body.innerHTML="";
+  logs.forEach(l=>{
+    const tr=document.createElement("tr");
+    const dt = new Date(l.created_at).toLocaleString("ja-JP");
+    tr.innerHTML=`<td>${escapeHtml(dt)}</td><td>${escapeHtml(l.operator_name)}</td><td>${l.line_count}</td><td>${l.issue_count}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+function makeAiPrompt(){
+  const rows = state.lastResults.filter(x =>
+    ["固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
+  );
+  const src = document.getElementById("sourceText").value;
+  const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
+  return `あなたは映像テロップの校閲担当です。
+以下の原稿を校閲してください。機械ルールで確定できない部分を中心に、
+誤字脱字、誤変換、固有名詞、正式名称、読み・ルビ、字体、文脈上の不自然さを指摘してください。
+断定できない場合は「要確認」とし、自動修正はしないでください。
+
+【機械校閲でAI確認を推奨された箇所】
+${focus || "なし"}
+
+【原稿】
+${src}
+
+【出力形式】
+行番号 / 判定（修正候補・要確認） / 確信度 / 原文 / 候補 / 理由
+`;
+}
+
+function toCsv(){
+  const rows=[["行","判定","種別","確信度","原文","候補","理由"]];
+  state.lastResults.forEach(r=>rows.push([r.line,r.verdict,r.type,r.confidence || "低",r.source,r.suggestion,r.reason]));
+  return rows.map(row=>row.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");
+}
+
+async function reloadSharedData(){
+  clearSystemMessage();
+  try{
+    const dict = await Backend.dictionaries();
+    state.rules = dict.rules.map(x=>({id:x.id,wrong:x.wrong,correct:x.correct}));
+    state.proper = dict.proper.map(x=>({id:x.id,wrong:x.variant,correct:x.canonical}));
+    state.glyphCautions = dict.glyphCautions;
+    state.readingCautions = dict.readingCautions;
+    state.officialNameCautions = dict.officialNameCautions;
+
+    const logs = await Backend.logs(50);
+    renderLogs(logs);
+  }catch(e){
+    showSystemMessage(`共有データを読み込めませんでした: ${e.message}`, "error");
+  }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  if(!Backend.configured()){
+    location.href = "./auth.html";
+    return;
+  }
+  Backend.init();
+  const s = await Backend.requireSession();
+  if(!s) return;
+
+  try{
+    state.profile = await Backend.profile();
+    const roleText = state.profile.role === "admin" ? "管理者" : "運用者";
+    document.getElementById("userBadge").textContent = `${state.profile.display_name || state.profile.email} / ${roleText}`;
+    if(state.profile.role === "admin"){
+      document.getElementById("settingsLink").classList.remove("hidden");
+      document.getElementById("logTitle").textContent = "3. 全体の運用ログ";
+    }else{
+      document.getElementById("logTitle").textContent = "3. 自分の運用ログ";
+    }
+  }catch(e){
+    showSystemMessage(`ユーザー情報を取得できませんでした: ${e.message}`, "error");
+  }
+
+  await reloadSharedData();
+  renderResults([]);
+
+  document.getElementById("logoutButton").onclick = () => Backend.signOut();
+  document.getElementById("refreshButton").onclick = reloadSharedData;
+  document.getElementById("clearText").onclick = () => {
+    document.getElementById("sourceText").value="";
+    state.lastResults=[];
+    renderResults([]);
+  };
+
+  document.getElementById("runCheck").onclick = async () => {
+    const lines = document.getElementById("sourceText").value.split(/\r?\n/);
+    const results = [];
+    lines.forEach((line,i)=>results.push(...checkLine(line,i+1)));
+    state.lastResults = results;
+    renderResults(results);
+
+    try{
+      await Backend.addOperationLog({
+        lineCount: lines.filter(x=>x.trim()).length,
+        issueCount: results.length,
+        operatorName: state.profile?.display_name || state.profile?.email || "未設定"
+      });
+      renderLogs(await Backend.logs(50));
+    }catch(e){
+      showSystemMessage(`校閲は完了しましたが、運用ログを保存できませんでした: ${e.message}`, "error");
+    }
+  };
+
+  document.getElementById("copyAiPrompt").onclick = async () => {
+    try{
+      await navigator.clipboard.writeText(makeAiPrompt());
+      showSystemMessage("AI確認用テキストをコピーしました。ChatGPTに貼り付けてください。", "success");
+    }catch(e){
+      showSystemMessage("クリップボードへコピーできませんでした。ブラウザの権限を確認してください。", "error");
+    }
+  };
+
+  document.getElementById("downloadCsv").onclick = () => {
+    const blob=new Blob(["\ufeff"+toCsv()],{type:"text/csv;charset=utf-8"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`telop-proofread-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+});
