@@ -498,27 +498,66 @@ function renderLogs(logs){
 }
 
 function makeAiPrompt(){
-  const rows = state.lastResults.filter(x =>
-    ["英文スペル","人名候補","肩書き候補","所属・団体候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
-  );
-  const src = state.lastTargets.map(t => `${t.lineNo}行目: ${t.text}`).join("\n");
-  const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
-  return `あなたは映像テロップの校閲担当です。
-以下の原稿を校閲してください。機械ルールで確定できない部分を中心に、
-誤字脱字、誤変換、固有名詞、正式名称、読み・ルビ、字体、文脈上の不自然さを指摘してください。
-断定できない場合は「要確認」とし、自動修正はしないでください。
+  const semanticTypes = [
+    "人名候補","肩書き候補","所属・団体候補","固有名詞候補","未登録固有名詞",
+    "正式名称注意","読み・ルビ注意","読み要確認","字体注意","英文スペル"
+  ];
+  const rows = state.lastResults.filter(x => semanticTypes.includes(x.type));
+  const targets = state.lastTargets.map(t => ({
+    line:t.lineNo,
+    text:t.text
+  }));
 
-【機械校閲でAI確認を推奨された箇所】
-${focus || "なし"}
+  const machineFindings = rows.map(r => ({
+    line:r.line,
+    type:r.type,
+    confidence:r.confidence || "低",
+    source:r.source,
+    suggestion:r.suggestion || "",
+    reason:r.reason
+  }));
 
-【原稿】
-${src}
+  return `あなたはテレビ・映像制作向けのテロップ校閲担当です。
+以下は、機械ルールで一次チェック済みの「検証対象テロップだけ」です。
+あなたの役割は、ルールでは難しい意味理解を行い、人名・肩書き・所属・団体名・作品名・商品名・施設名・一般英文などを文脈で分類したうえで校閲することです。
+
+【重要方針】
+- 原文にない情報を作らない。
+- 人名、団体名、作品名、商品名などは、確証がなければ「要確認」とする。
+- 「TW」「T.W.」「テロップ」などの管理記号は校閲対象の固有名詞として扱わない。
+- "Directed by" "Produced by" など一般的な英文クレジット表現は、固有名詞ではなく英文として扱う。
+- 英文はスペル・大文字小文字・語法の不自然さを確認する。
+- 「人物名（所属/コンビ/団体）」のような構造は、人物名と括弧内の所属・団体を分けて評価する。
+- 「肩書き + 人名 + 敬称」の構造は、肩書きと人名を分けて評価する。
+- 固有名詞の正式表記を断定できない場合は、推測で修正候補を作らず「要確認」とする。
+- 機械判定が誤っていると思われる場合は、その旨を明示する。
+
+【検証対象テロップ】
+${targets.map(t => `${t.line}行目: ${t.text}`).join("\n") || "対象なし"}
+
+【機械一次チェック結果】
+${machineFindings.length
+  ? machineFindings.map(f => `- ${f.line}行目 / ${f.type} / 確信度:${f.confidence}\n  原文: ${f.source}\n  候補: ${f.suggestion || "なし"}\n  理由: ${f.reason}`).join("\n")
+  : "機械判定なし"}
+
+【あなたに行ってほしいこと】
+1. 各テロップを意味単位に分解する。
+   例：肩書き / 人名 / 所属・団体 / 作品名 / 商品名 / 一般英文 / その他
+2. 機械一次チェックの誤検出を指摘する。
+3. 誤字脱字、誤変換、スペル、大文字小文字、正式名称、人物名、団体名、読み・ルビの要確認箇所を抽出する。
+4. 確証のない固有名詞は「要確認」とする。
+5. 問題がない部分は無理に指摘しない。
 
 【出力形式】
-行番号 / 判定（修正候補・要確認） / 確信度 / 原文 / 候補 / 理由
+行番号 | 判定（修正候補 / 要確認 / 問題なし / 機械誤検出） | 種別 | 確信度（高/中/低） | 対象語 | 修正候補 | 理由
+
+最後に、
+- 「機械ルールで十分だった指摘」
+- 「AI意味理解が必要だった指摘」
+- 「人による最終確認が必要な指摘」
+の3分類で短くまとめてください。
 `;
 }
-
 function toCsv(){
   const rows=[["行","判定","種別","確信度","原文","候補","理由"]];
   state.lastResults.forEach(r=>rows.push([r.line,r.verdict,r.type,r.confidence || "低",r.source,r.suggestion,r.reason]));
@@ -614,7 +653,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("copyAiPrompt").onclick = async () => {
     try{
       await navigator.clipboard.writeText(makeAiPrompt());
-      showSystemMessage("AI確認用テキストをコピーしました。ChatGPTに貼り付けてください。", "success");
+      showSystemMessage("AI意味チェック用テキストをコピーしました。ChatGPTに貼り付けてください。", "success");
     }catch(e){
       showSystemMessage("クリップボードへコピーできませんでした。ブラウザの権限を確認してください。", "error");
     }
