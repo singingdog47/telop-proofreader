@@ -6,6 +6,7 @@ const state = {
   officialNameCautions: [],
   lastResults: [],
   lastTargets: [],
+  postalPlaceMatches: [],
   profile: null
 };
 
@@ -398,6 +399,26 @@ function checkLine(line, lineNo){
   return out;
 }
 
+function postalReadingRows(matches){
+  const rows=[];
+  for(const m of matches || []){
+    for(const p of m.places || []){
+      const readings=(p.readings || []).map(r=>r.roman).filter(Boolean);
+      if(!readings.length) continue;
+      rows.push({
+        line:m.line,
+        verdict:"参照",
+        type:"地名読み参照",
+        confidence:"高",
+        source:m.text,
+        suggestion:readings.join(" / "),
+        reason:`日本郵便の住所郵便番号（ローマ字）データで「${p.term}」を照合しました。読み確認の参考にしてください。`
+      });
+    }
+  }
+  return rows;
+}
+
 function confidenceClass(confidence){
   if(confidence === "高") return "confidence-high";
   if(confidence === "中") return "confidence-medium";
@@ -415,7 +436,7 @@ function renderResults(results){
   body.innerHTML="";
   results.forEach(r=>{
     const tr=document.createElement("tr");
-    const verdictCls = r.verdict==="NG"?"ng":"warn";
+    const verdictCls = r.verdict==="NG" ? "ng" : (r.verdict==="参照" ? "info" : "warn");
     const confidence = r.confidence || "低";
     const confCls = confidenceClass(confidence);
     tr.classList.add(confCls);
@@ -477,6 +498,14 @@ function makeAiPrompt(){
     reason:r.reason
   }));
 
+  const postalRefs = (state.postalPlaceMatches || []).flatMap(m =>
+    (m.places || []).map(p => ({
+      line:m.line,
+      term:p.term,
+      roman:(p.readings || []).map(r=>r.roman).filter(Boolean)
+    }))
+  );
+
   return `あなたはテレビ・映像制作向けのテロップ校閲担当です。
 以下は、機械ルールで一次チェック済みの「検証対象テロップだけ」です。
 あなたの役割は、ルールでは難しい意味理解と、文字・字体・フォント依存のリスク確認を行うことです。人名・肩書き・所属・団体名・作品名・商品名・施設名・一般英文などを文脈で分類したうえで、表記と字形の両面から校閲してください。
@@ -503,6 +532,14 @@ function makeAiPrompt(){
 
 【検証対象テロップ】
 ${targets.map(t => `${t.line}行目: ${t.text}`).join("\n") || "対象なし"}
+
+【日本郵便 地名・ローマ字読み参照】
+${postalRefs.length
+  ? postalRefs.map(p => `- ${p.line}行目: ${p.term} → ${p.roman.join(" / ")}`).join("\n")
+  : "該当なし"}
+
+この地名データは、漢字表記と読みの照合用の一次資料として優先してください。
+ただし、郵便番号データの町域表記と番組上の地名表記が常に完全一致するとは限らないため、文脈と公式自治体表記も考慮してください。
 
 【機械一次チェック結果】
 ${machineFindings.length
@@ -589,15 +626,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("sourceText").value="";
     state.lastResults=[];
     state.lastTargets=[];
+    state.postalPlaceMatches=[];
     renderResults([]);
   };
 
   document.getElementById("runCheck").onclick = async () => {
     const source = document.getElementById("sourceText").value;
     const {targets, rawLineCount} = extractTwTargets(source);
-    const results = [];
+    let results = [];
     targets.forEach(t => results.push(...checkLine(t.text, t.lineNo)));
     state.lastTargets = targets;
+
+    try{
+      const postal = await Backend.postalPlaceReadings(targets.map(t=>({line:t.lineNo,text:t.text})));
+      state.postalPlaceMatches = postal.matches || [];
+
+      // 日本郵便データで読みが確認できた行については、一般的な「読み要確認」を置き換える。
+      results = results.filter(r => {
+        if(r.type !== "読み要確認") return true;
+        const match = state.postalPlaceMatches.find(m => m.line === r.line);
+        if(!match) return true;
+        return !(match.places || []).some(p => r.source.includes(p.term));
+      });
+      results.push(...postalReadingRows(state.postalPlaceMatches));
+    }catch(e){
+      state.postalPlaceMatches = [];
+      showSystemMessage(`地名読みデータの照合に失敗しました。通常の校閲は続行します: ${e.message}`, "error");
+    }
+
     state.lastResults = results;
     renderResults(results);
 
@@ -611,7 +667,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try{
       await Backend.addOperationLog({
         lineCount: targets.length,
-        issueCount: results.length,
+        issueCount: results.filter(r=>r.verdict!=="参照").length,
         operatorName: state.profile?.display_name || state.profile?.email || "未設定"
       });
       renderLogs(await Backend.logs(50));
