@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>映像テロップ校閲システム</title>
-  <link rel="stylesheet" href="./src/style.css?v=20260918-1153" />
+  <link rel="stylesheet" href="./src/style.css?v=20260918-1237" />
 </head>
 <body>
   <header>
     <div>
       <h1>映像テロップ校閲システム</h1>
       <p>共有Web版 / Google Drive不使用</p>
-      <p id="versionInfo" class="hint">MVP / 最終更新: 2026-09-18 11:53 JST</p>
+      <p id="versionInfo" class="hint">MVP / 最終更新: 2026-09-18 12:37 JST</p>
     </div>
     <div class="header-actions">
       <span id="userBadge" class="user-badge">接続中...</span>
@@ -53,8 +53,8 @@
         </table>
       </div>
       <div class="actions">
-        <button id="copyAiPrompt">AI意味チェック用テキストをコピー</button>
-        <span class="hint">機械チェック後の対象テロップだけを、意味理解用の指示付きでコピーします。</span>
+        <button id="copyAiPrompt">AI総合チェック用テキストをコピー</button>
+        <span class="hint">対象テロップを、意味理解・固有名詞・英文・字体／フォント確認の指示付きでコピーします。</span>
         <button id="downloadCsv">CSV出力</button>
       </div>
     </section>
@@ -77,8 +77,8 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./src/config.js?v=20260918-1153"></script>
-  <script src="./src/backend.js?v=20260918-1153"></script>
-  <script src="./src/app.js?v=20260918-1153"></script>
+  <script src="./src/config.js?v=20260918-1237"></script>
+  <script src="./src/backend.js?v=20260918-1237"></script>
+  <script src="./src/app.js?v=20260918-1237"></script>
 </body>
 </html>
