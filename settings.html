@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>辞書・運用者管理 | 映像テロップ校閲システム</title>
-  <link rel="stylesheet" href="./src/style.css?v=20260918-1153" />
+  <link rel="stylesheet" href="./src/style.css?v=20260918-1239" />
 </head>
 <body>
   <header>
@@ -14,7 +14,8 @@
     </div>
     <div class="header-actions">
       <span id="userBadge" class="user-badge">接続中...</span>
-      <a class="settings-link" href="./about.html">このシステムについて</a>\n      <a class="settings-link" href="./index.html">← 校閲画面</a>
+      <a class="settings-link" href="./about.html">このシステムについて</a>
+      <a class="settings-link" href="./index.html">← 校閲画面</a>
       <button id="logoutButton">ログアウト</button>
     </div>
   </header>
@@ -37,7 +38,7 @@
 
     <section class="panel">
       <h2>運用者管理</h2>
-      <p class="hint">最初の登録ユーザーは管理者、以降は運用者です。管理者は他ユーザーの権限を変更できます。</p>
+      <p class="hint">最初の登録ユーザーは管理者、以降は運用者です。管理者は他ユーザーの権限変更と登録削除ができます。自分自身のアカウントはこの画面から削除できません。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>表示名</th><th>メール</th><th>権限</th><th>登録日時</th><th></th></tr></thead>
@@ -126,8 +127,8 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./src/config.js?v=20260918-1153"></script>
-  <script src="./src/backend.js?v=20260918-1153"></script>
-  <script src="./src/settings.js?v=20260918-1153"></script>
+  <script src="./src/config.js?v=20260918-1239"></script>
+  <script src="./src/backend.js?v=20260918-1239"></script>
+  <script src="./src/settings.js?v=20260918-1239"></script>
 </body>
 </html>
