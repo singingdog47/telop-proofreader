@@ -412,6 +412,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   Backend.init();
+  const versionInfo = document.getElementById("versionInfo");
+  if(versionInfo && window.APP_CONFIG){
+    const version = window.APP_CONFIG.appVersion || "MVP";
+    const updated = window.APP_CONFIG.updatedAt || "";
+    versionInfo.textContent = updated ? `${version} / 最終更新: ${updated}` : version;
+  }
   const s = await Backend.requireSession();
   if(!s) return;
 
