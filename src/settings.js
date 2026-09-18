@@ -60,7 +60,7 @@ function render(){
         </select>
       </td>
       <td>${escapeHtml(new Date(m.created_at).toLocaleString("ja-JP"))}</td>
-      <td>${self ? "" : `<button data-save-role="${m.id}">権限を保存</button>`}</td>`;
+      <td>${self ? "" : `<button data-save-role="${m.id}">権限を保存</button> <button class="small-delete" data-delete-member="${m.id}" data-delete-email="${escapeHtml(m.email || "")}">登録削除</button>`}</td>`;
     mb.appendChild(tr);
   });
 
@@ -219,6 +219,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         showMessage("削除しました。", "success");
       }catch(err){
         showMessage(`削除できませんでした: ${err.message}`, "error");
+      }
+      return;
+    }
+
+    const memberDelete=e.target.closest("[data-delete-member]");
+    if(memberDelete){
+      const userId=memberDelete.dataset.deleteMember;
+      const email=memberDelete.dataset.deleteEmail || "このユーザー";
+      if(!confirm(`${email} のユーザー登録を削除しますか？\nログイン情報・プロフィール・そのユーザーの運用ログも削除されます。共有辞書は残ります。`)) return;
+      try{
+        await Backend.deleteMember(userId);
+        await loadAll();
+        showMessage("ユーザー登録を削除しました。", "success");
+      }catch(err){
+        showMessage(`ユーザー登録を削除できませんでした: ${err.message}`, "error");
       }
       return;
     }
