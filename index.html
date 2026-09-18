@@ -24,7 +24,8 @@
 
     <section class="panel">
       <h2>1. 原稿入力</h2>
-      <textarea id="sourceText" rows="14" placeholder="ここにテロップ原稿を貼り付けてください。1行=1テロップ想定です。"></textarea>
+      <p class="hint"><strong>検証対象：</strong>「4桁の数字 + TW」で始まるテロップのみ。TWテロップに続く改行行も、空行または次の管理行まで同じ対象として扱います。</p>
+      <textarea id="sourceText" rows="14" placeholder="原稿全体をそのまま貼り付けてください。例：1034  TW  テロップ本文"></textarea>
       <div class="actions">
         <button id="runCheck" class="primary">校閲する</button>
         <button id="clearText">クリア</button>
@@ -59,7 +60,7 @@
       <div class="section-title-row">
         <div>
           <h2 id="logTitle">3. 運用ログ</h2>
-          <p class="hint">原稿本文は保存しません。日時・運用者・行数・指摘数のみ共有DBに記録します。</p>
+          <p class="hint">原稿本文は保存しません。日時・運用者・検証対象行数・指摘数のみ共有DBに記録します。</p>
         </div>
         <button id="refreshButton">辞書・ログを再読込</button>
       </div>
