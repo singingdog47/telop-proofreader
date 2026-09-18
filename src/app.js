@@ -5,11 +5,70 @@ const state = {
   readingCautions: [],
   officialNameCautions: [],
   lastResults: [],
+  lastTargets: [],
   profile: null
 };
 
 function normalize(s){
   return String(s ?? "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function extractTwTargets(source){
+  const rawLines = String(source ?? "").split(/\r?\n/);
+  const targets = [];
+  let inTwBlock = false;
+
+  rawLines.forEach((rawLine, index) => {
+    const normalized = String(rawLine ?? "").normalize("NFKC");
+    const trimmed = normalized.trim();
+
+    if(!trimmed){
+      inTwBlock = false;
+      return;
+    }
+
+    // 「4桁の数字 + TW」で始まる行をテロップ開始行として扱う。
+    // 全角数字・全角英字も NFKC 正規化後に判定する。
+    const tw = trimmed.match(/^(\d{4})\s+TW(?:\s+|$)(.*)$/i);
+    if(tw){
+      inTwBlock = true;
+      const body = (tw[2] || "").trim();
+      if(body){
+        targets.push({
+          lineNo:index + 1,
+          telopNo:tw[1],
+          text:body,
+          isContinuation:false
+        });
+      }
+      return;
+    }
+
+    // 別の4桁管理番号が始まったら、TWブロックを終了。
+    if(/^\d{4}(?:\s|$)/.test(trimmed)){
+      inTwBlock = false;
+      return;
+    }
+
+    // << ... >>、【...】、※... など明らかな管理・注記行で終了。
+    if(/^(?:<<|【|※)/.test(trimmed)){
+      inTwBlock = false;
+      return;
+    }
+
+    // TW行の直後に続く改行テロップも同じ検証対象に含める。
+    // 添付例の「Directed by ...」のような継続行を想定。
+    if(inTwBlock){
+      targets.push({
+        lineNo:index + 1,
+        telopNo:"",
+        text:trimmed,
+        isContinuation:true
+      });
+    }
+  });
+
+  return {targets, rawLineCount:rawLines.filter(x=>x.trim()).length};
 }
 
 function escapeHtml(s){
@@ -220,7 +279,7 @@ function renderResults(results){
       ${counts.低 ? '<span class="low-note">※ 確信度「低」は誤検出の可能性があるため、特に目視確認してください。</span>' : ''}
     `;
   } else {
-    summary.textContent = "登録済みルールでは指摘はありません。";
+    summary.textContent = "検証対象内では、登録済みルールによる指摘はありません。";
   }
 }
 
@@ -239,7 +298,7 @@ function makeAiPrompt(){
   const rows = state.lastResults.filter(x =>
     ["固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
   );
-  const src = document.getElementById("sourceText").value;
+  const src = state.lastTargets.map(t => `${t.lineNo}行目: ${t.text}`).join("\n");
   const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
   return `あなたは映像テロップの校閲担当です。
 以下の原稿を校閲してください。機械ルールで確定できない部分を中心に、
@@ -311,19 +370,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("clearText").onclick = () => {
     document.getElementById("sourceText").value="";
     state.lastResults=[];
+    state.lastTargets=[];
     renderResults([]);
   };
 
   document.getElementById("runCheck").onclick = async () => {
-    const lines = document.getElementById("sourceText").value.split(/\r?\n/);
+    const source = document.getElementById("sourceText").value;
+    const {targets, rawLineCount} = extractTwTargets(source);
     const results = [];
-    lines.forEach((line,i)=>results.push(...checkLine(line,i+1)));
+    targets.forEach(t => results.push(...checkLine(t.text, t.lineNo)));
+    state.lastTargets = targets;
     state.lastResults = results;
     renderResults(results);
 
+    const targetStartCount = targets.filter(t => !t.isContinuation).length;
+    if(targets.length === 0){
+      showSystemMessage("検証対象が見つかりませんでした。「4桁の数字 + TW」で始まる行を確認してください。", "error");
+      return;
+    }
+    showSystemMessage(`検証対象: TWテロップ ${targetStartCount}件 / 対象行 ${targets.length}行（入力全体 ${rawLineCount}行）`, "success");
+
     try{
       await Backend.addOperationLog({
-        lineCount: lines.filter(x=>x.trim()).length,
+        lineCount: targets.length,
         issueCount: results.length,
         operatorName: state.profile?.display_name || state.profile?.email || "未設定"
       });
