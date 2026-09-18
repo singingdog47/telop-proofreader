@@ -189,8 +189,44 @@ function looksLikePersonName(value){
   return false;
 }
 
+function detectParentheticalIdentity(text){
+  const normalized = normalize(text);
+  const m = normalized.match(/^([^（）()]{2,24})[（(]([^（）()]{2,30})[）)]$/);
+  if(!m) return [];
+
+  const left = m[1].trim();
+  const right = m[2].trim();
+  const out = [];
+
+  // 左側は「氏名 + （所属/グループ）」のテロップで人名になりやすい。
+  // ひらがな・カタカナを含む芸名にも対応。ただし断定せず候補扱い。
+  if(/^[一-龠々ぁ-んァ-ヶー・]{2,20}$/.test(left)){
+    out.push({
+      type:"人名候補",
+      value:left,
+      confidence:/[一-龠々]/.test(left) ? "中" : "低",
+      why:"括弧の外側にあり、人物名＋所属・グループ表記の構造で使われる可能性があります。正式な氏名・芸名表記を確認してください。"
+    });
+  }
+
+  // 括弧内は所属・団体・コンビ名等で使われることが多い。
+  // 何者かまではルールだけで断定しない。
+  if(/^[一-龠々ぁ-んァ-ヶーA-Za-z0-9・&＆\s]{2,30}$/.test(right)){
+    out.push({
+      type:"所属・団体候補",
+      value:right,
+      confidence:"中",
+      why:"人物名の後ろの括弧内にあり、所属・団体名・コンビ名などの可能性があります。正式表記を確認してください。"
+    });
+  }
+
+  return out;
+}
+
 function detectUnknownProperCandidates(text, exclusions=[]){
   const candidates = [];
+  const controlTokens = ["TW","T.W.","TEL","TEXT","テロップ"];
+  exclusions = [...exclusions, ...controlTokens];
   const add = (value, confidence, why) => {
     const v = value.trim();
     if(!v || v.length < 2 || isKnownProperCandidate(v)) return;
@@ -295,6 +331,22 @@ function checkLine(line, lineNo){
   }
 
   const exclusions = [];
+
+  const parentheticalCandidates = detectParentheticalIdentity(text);
+  parentheticalCandidates.forEach(c => exclusions.push(c.value));
+  for(const c of parentheticalCandidates){
+    if(isKnownProperCandidate(c.value)) continue;
+    out.push({
+      line:lineNo,
+      verdict:"注意",
+      type:c.type,
+      confidence:c.confidence,
+      source:text,
+      suggestion:"",
+      reason:`「${c.value}」は${c.type === "人名候補" ? "人名" : "所属・団体"}として確認すべき候補です。${c.why}`
+    });
+  }
+
   const creditStructure = detectCreditStructure(text);
   if(creditStructure){
     exclusions.push(creditStructure.credit, creditStructure.rawCredit, creditStructure.name);
@@ -447,7 +499,7 @@ function renderLogs(logs){
 
 function makeAiPrompt(){
   const rows = state.lastResults.filter(x =>
-    ["英文スペル","人名候補","肩書き候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
+    ["英文スペル","人名候補","肩書き候補","所属・団体候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
   );
   const src = state.lastTargets.map(t => `${t.lineNo}行目: ${t.text}`).join("\n");
   const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
