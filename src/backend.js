@@ -112,6 +112,15 @@
     if(error) throw error;
   }
 
+  async function postalPlaceReadings(lines){
+    const { data, error } = await getClient().functions.invoke("postal-place-readings", {
+      body: { lines }
+    });
+    if(error) throw error;
+    if(data?.error) throw new Error(data.error);
+    return data || { matches:[] };
+  }
+
   async function logs(limit=50){
     const { data, error } = await getClient()
       .from("operation_logs")
@@ -167,7 +176,7 @@
   window.Backend = {
     configured, init, getClient, session, requireSession, profile, signOut,
     registrationStatus, setRegistrationStatus,
-    dictionaries, addOperationLog, logs, members, updateRole, deleteMember,
+    dictionaries, addOperationLog, postalPlaceReadings, logs, members, updateRole, deleteMember,
     insertDictionary, deleteDictionary
   };
 })();
