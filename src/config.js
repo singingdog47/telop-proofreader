@@ -5,5 +5,5 @@ window.APP_CONFIG = {
   supabaseUrl: "https://pxiogpphwffpcsvlpkyh.supabase.co",
   supabasePublishableKey: "sb_publishable_Y7WpR2Zs_PC92Lniyu6hRQ_nVdSg8R0",
   appVersion: "MVP",
-  updatedAt: "2026-09-18 11:53 JST"
+  updatedAt: "2026-09-18 12:37 JST"
 };
