@@ -136,6 +136,12 @@
     if(error) throw error;
   }
 
+  async function deleteMember(userId){
+    const { data, error } = await getClient().rpc("admin_delete_user", { target_user_id: userId });
+    if(error) throw error;
+    return data;
+  }
+
   const tableMap = {
     rules: "rules",
     proper: "proper_nouns",
@@ -161,7 +167,7 @@
   window.Backend = {
     configured, init, getClient, session, requireSession, profile, signOut,
     registrationStatus, setRegistrationStatus,
-    dictionaries, addOperationLog, logs, members, updateRole,
+    dictionaries, addOperationLog, logs, members, updateRole, deleteMember,
     insertDictionary, deleteDictionary
   };
 })();
