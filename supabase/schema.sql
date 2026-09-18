@@ -313,3 +313,55 @@ grant select, insert on public.operation_logs to authenticated;
 
 -- identity列の採番用
 grant usage, select on all sequences in schema public to authenticated;
+
+
+-- 管理者によるユーザー登録削除
+create or replace function public.admin_delete_user(target_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_role text;
+  admin_count int;
+begin
+  if auth.uid() is null or not private.is_admin() then
+    raise exception 'Admin privileges are required';
+  end if;
+  if target_user_id is null then
+    raise exception 'User id is required';
+  end if;
+  if target_user_id = auth.uid() then
+    raise exception 'You cannot delete your own account from the admin screen';
+  end if;
+
+  select role into target_role from public.profiles where id = target_user_id;
+  if target_role is null then
+    raise exception 'User not found';
+  end if;
+
+  if target_role = 'admin' then
+    select count(*) into admin_count from public.profiles where role = 'admin';
+    if admin_count <= 1 then
+      raise exception 'The last admin account cannot be deleted';
+    end if;
+  end if;
+
+  update public.rules set created_by = null where created_by = target_user_id;
+  update public.proper_nouns set created_by = null where created_by = target_user_id;
+  update public.glyph_cautions set created_by = null where created_by = target_user_id;
+  update public.reading_cautions set created_by = null where created_by = target_user_id;
+  update public.official_name_cautions set created_by = null where created_by = target_user_id;
+
+  delete from auth.users where id = target_user_id;
+  if not found then
+    raise exception 'User not found';
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.admin_delete_user(uuid) from public, anon;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
