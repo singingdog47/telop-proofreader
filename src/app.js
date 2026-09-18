@@ -451,15 +451,18 @@ function renderResults(results){
     body.appendChild(tr);
   });
 
+  const references = results.filter(r=>r.verdict==="参照");
+  const issues = results.filter(r=>r.verdict!=="参照");
   const counts = {高:0, 中:0, 低:0};
-  results.forEach(r => counts[r.confidence || "低"]++);
+  issues.forEach(r => counts[r.confidence || "低"]++);
   const summary = document.getElementById("summary");
   if(results.length){
     summary.innerHTML = `
-      <strong>${results.length}件</strong>の注意・指摘があります。
+      <strong>${issues.length}件</strong>の注意・指摘があります。
       <span class="summary-count high">高 ${counts.高}</span>
       <span class="summary-count medium">中 ${counts.中}</span>
       <span class="summary-count low">低 ${counts.低}</span>
+      ${references.length ? `<span class="summary-count reference">地名読み参照 ${references.length}</span>` : ""}
       ${counts.低 ? '<span class="low-note">※ 確信度「低」は誤検出の可能性があるため、特に目視確認してください。</span>' : ''}
     `;
   } else {
