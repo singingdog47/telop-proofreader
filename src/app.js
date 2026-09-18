@@ -101,17 +101,19 @@ function detectRoleAndPersonCandidates(text){
   const normalized = normalize(text);
   const out = [];
 
-  // 肩書きでよく使われる語。単独のカタカナ固有名詞として扱わず、
-  // 「肩書き + 人名」の構造として評価する。
   const rolePattern = /([一-龠々ヶヵぁ-んァ-ヶーA-Za-z0-9・]+?(?:アドバイザー|コンサルタント|ジャーナリスト|アナウンサー|キャスター|ディレクター|プロデューサー|フォトグラファー|デザイナー|評論家|専門家|研究家|料理研究家|気象予報士|教授|准教授|講師|医師|医者|弁護士|税理士|会計士|建築士|作家|脚本家|監督|社長|会長|代表|店主|院長))/;
   const roleMatch = normalized.match(rolePattern);
 
-  // 「毎田祥子先生」のような敬称付き人名を優先して拾う。
-  const honorificMatch = normalized.match(/([一-龠々]{2,8})(先生|氏|さん|様|博士)(?:\s|$|[、。,.!！?？])/);
-  // 肩書きの直後にある漢字名も候補にする（敬称なしも想定）。
-  const roleNameMatch = roleMatch
-    ? normalized.slice((roleMatch.index || 0) + roleMatch[0].length).match(/^\s*([一-龠々]{2,8})(?:(先生|氏|さん|様|博士))?/)
-    : null;
+  // 日本語名は「漢字のみ」に限定しない。カタカナ+漢字、漢字+カタカナにも対応。
+  const jpNameCore = "[一-龠々ァ-ヶー]{2,16}";
+  const honorificRe = new RegExp(`(${jpNameCore})(先生|氏|さん|様|博士)(?:\\s|$|[、。,.!！?？])`);
+  const honorificMatch = normalized.match(honorificRe);
+
+  let roleNameMatch = null;
+  if(roleMatch){
+    const tail = normalized.slice((roleMatch.index || 0) + roleMatch[0].length).trim();
+    roleNameMatch = tail.match(new RegExp(`^(${jpNameCore})(先生|氏|さん|様|博士)?(?:\\s|$|[、。,.!！?？])`));
+  }
 
   if(roleMatch){
     out.push({
@@ -134,19 +136,68 @@ function detectRoleAndPersonCandidates(text){
       value:person.value,
       confidence:person.confidence,
       why:person.honorific
-        ? `「${person.honorific}」が付いているため人名の可能性が高いです。姓名の漢字・表記を確認してください。`
-        : "肩書きの直後にあるため人名の可能性があります。姓名の漢字・表記を確認してください。"
+        ? `「${person.honorific}」が付いているため人名の可能性が高いです。姓名の漢字・カナを含む正式表記を確認してください。`
+        : "肩書きの直後にあるため人名の可能性があります。姓名の漢字・カナを含む正式表記を確認してください。"
     });
   }
 
   return out;
 }
 
-function detectUnknownProperCandidates(text){
+function detectCreditStructure(text){
+  const normalized = normalize(text);
+  const knownCredits = [
+    "Directed by","Produced by","Written by","Music by","Edited by",
+    "Created by","Narrated by","Photography by","Presented by"
+  ];
+
+  // 正しいクレジット表現なら、その英語部分は固有名詞候補から除外し、後続を人名候補として扱う。
+  for(const credit of knownCredits){
+    const re = new RegExp(`^${credit.replace(" ", "\\s+")}\\s+(.+)$`, "i");
+    const m = normalized.match(re);
+    if(m){
+      return {credit, rawCredit:normalized.slice(0, normalized.length - m[1].length).trim(), name:m[1].trim(), spellingIssue:null};
+    }
+  }
+
+  // "Driected by" など、既知のクレジット表現に近い綴りも検出。
+  const lead = normalized.match(/^([A-Za-z]+)\s+([A-Za-z]+)\s+(.+)$/);
+  if(lead && lead[2].toLowerCase() === "by"){
+    const raw = `${lead[1]} ${lead[2]}`;
+    let best = null;
+    for(const credit of knownCredits){
+      const d = levenshtein(raw.toLowerCase(), credit.toLowerCase());
+      if(!best || d < best.d) best = {credit, d};
+    }
+    if(best && best.d > 0 && best.d <= 2){
+      return {
+        credit:best.credit,
+        rawCredit:raw,
+        name:lead[3].trim(),
+        spellingIssue:{wrong:raw, correct:best.credit}
+      };
+    }
+  }
+  return null;
+}
+
+function looksLikePersonName(value){
+  const v = normalize(value).replace(/(?:先生|氏|さん|様|博士)$/,"").trim();
+  if(!v) return false;
+  if(/^[一-龠々ァ-ヶー]{2,16}$/.test(v) && /[一-龠々]/.test(v)) return true;
+  if(/^[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3}$/.test(v)) return true;
+  return false;
+}
+
+function detectUnknownProperCandidates(text, exclusions=[]){
   const candidates = [];
   const add = (value, confidence, why) => {
     const v = value.trim();
     if(!v || v.length < 2 || isKnownProperCandidate(v)) return;
+    if(exclusions.some(e => {
+      const x = normalize(e);
+      return x && (x === v || x.includes(v) || v.includes(x));
+    })) return;
     if(candidates.some(x => x.value === v)) return;
     candidates.push({value:v, confidence, why});
   };
@@ -154,8 +205,9 @@ function detectUnknownProperCandidates(text){
   const geoOrg = text.match(/[一-龠々ヶヵぁ-んァ-ヶーA-Za-z0-9・.＆&]+(?:都|道|府|県|市|区|町|村|郡|駅|空港|公園|通り|川|河|山|岳|湖|湾|島|大学|高校|中学校|小学校|病院|銀行|証券|放送|テレビ|新聞|庁|省|局|協会|連盟|研究所|センター|ホテル|ホール|劇場|美術館|博物館)/g) || [];
   geoOrg.forEach(v => add(v, "高", "地名・組織・施設名で使われやすい接尾辞を含みます。"));
 
-  const latin = text.match(/\b(?:[A-Z][A-Za-z0-9]*(?:[.\-][A-Za-z0-9]+)*|[A-Z]{2,}|[A-Za-z]+[A-Z][A-Za-z0-9]*)\b/g) || [];
-  latin.forEach(v => add(v, "中", "英字の大文字表記・ブランド名・団体名の可能性があります。"));
+  // 通常の英文先頭語を固有名詞扱いしない。略語・CamelCase・記号を含む名称を中心に拾う。
+  const latin = text.match(/\b(?:[A-Z]{2,}|[A-Za-z]+[A-Z][A-Za-z0-9]*|[A-Za-z0-9]+(?:[.\-][A-Za-z0-9]+)+)\b/g) || [];
+  latin.forEach(v => add(v, "中", "英字の略語・ブランド名・団体名などの可能性があります。"));
 
   const kata = text.match(/[ァ-ヶー]{4,}/g) || [];
   const genericRoleWords = new Set([
@@ -242,10 +294,42 @@ function checkLine(line, lineNo){
     }
   }
 
+  const exclusions = [];
+  const creditStructure = detectCreditStructure(text);
+  if(creditStructure){
+    exclusions.push(creditStructure.credit, creditStructure.rawCredit, creditStructure.name);
+
+    if(creditStructure.spellingIssue){
+      out.push({
+        line:lineNo,
+        verdict:"NG",
+        type:"英文スペル",
+        confidence:"高",
+        source:text,
+        suggestion:text.replace(creditStructure.spellingIssue.wrong, creditStructure.spellingIssue.correct),
+        reason:`クレジット表現「${creditStructure.spellingIssue.wrong}」は「${creditStructure.spellingIssue.correct}」の綴り違いの可能性が高いです。`
+      });
+    }
+
+    if(looksLikePersonName(creditStructure.name) && !isKnownProperCandidate(creditStructure.name)){
+      out.push({
+        line:lineNo,
+        verdict:"注意",
+        type:"人名候補",
+        confidence:"高",
+        source:text,
+        suggestion:"",
+        reason:`「${creditStructure.name}」は「${creditStructure.credit}」の後に置かれているため、人名として確認すべき候補です。正式な姓名表記を確認してください。`
+      });
+    }
+  }
+
   const rolePersonCandidates = detectRoleAndPersonCandidates(text);
+  rolePersonCandidates.forEach(c => exclusions.push(c.value));
   for(const c of rolePersonCandidates){
     const known = isKnownProperCandidate(c.value);
     if(known) continue;
+    if(out.some(x => x.type === c.type && x.reason.includes(`「${c.value}」`))) continue;
     out.push({
       line:lineNo,
       verdict:"注意",
@@ -257,7 +341,7 @@ function checkLine(line, lineNo){
     });
   }
 
-  const unknownProper = detectUnknownProperCandidates(text);
+  const unknownProper = detectUnknownProperCandidates(text, exclusions);
   for(const c of unknownProper){
     out.push({
       line:lineNo, verdict:"注意", type:"未登録固有名詞", confidence:c.confidence, source:text,
@@ -363,7 +447,7 @@ function renderLogs(logs){
 
 function makeAiPrompt(){
   const rows = state.lastResults.filter(x =>
-    ["人名候補","肩書き候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
+    ["英文スペル","人名候補","肩書き候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
   );
   const src = state.lastTargets.map(t => `${t.lineNo}行目: ${t.text}`).join("\n");
   const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
