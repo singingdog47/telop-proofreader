@@ -227,6 +227,7 @@ function detectUnknownProperCandidates(text, exclusions=[]){
   const candidates = [];
   const controlTokens = ["TW","T.W.","TEL","TEXT","テロップ"];
   exclusions = [...exclusions, ...controlTokens];
+
   const add = (value, confidence, why) => {
     const v = value.trim();
     if(!v || v.length < 2 || isKnownProperCandidate(v)) return;
@@ -238,25 +239,10 @@ function detectUnknownProperCandidates(text, exclusions=[]){
     candidates.push({value:v, confidence, why});
   };
 
+  // ルールだけで比較的根拠を持てる地名・組織・施設系だけを拾う。
+  // カタカナ一般語、英字単語、数字、括弧だけを理由に固有名詞とは判定しない。
   const geoOrg = text.match(/[一-龠々ヶヵぁ-んァ-ヶーA-Za-z0-9・.＆&]+(?:都|道|府|県|市|区|町|村|郡|駅|空港|公園|通り|川|河|山|岳|湖|湾|島|大学|高校|中学校|小学校|病院|銀行|証券|放送|テレビ|新聞|庁|省|局|協会|連盟|研究所|センター|ホテル|ホール|劇場|美術館|博物館)/g) || [];
   geoOrg.forEach(v => add(v, "高", "地名・組織・施設名で使われやすい接尾辞を含みます。"));
-
-  // 通常の英文先頭語を固有名詞扱いしない。略語・CamelCase・記号を含む名称を中心に拾う。
-  const latin = text.match(/\b(?:[A-Z]{2,}|[A-Za-z]+[A-Z][A-Za-z0-9]*|[A-Za-z0-9]+(?:[.\-][A-Za-z0-9]+)+)\b/g) || [];
-  latin.forEach(v => add(v, "中", "英字の略語・ブランド名・団体名などの可能性があります。"));
-
-  const kata = text.match(/[ァ-ヶー]{4,}/g) || [];
-  const genericRoleWords = new Set([
-    "アドバイザー","コンサルタント","ジャーナリスト","アナウンサー","キャスター",
-    "ディレクター","プロデューサー","フォトグラファー","デザイナー"
-  ]);
-  kata.forEach(v => {
-    if(genericRoleWords.has(v)) return;
-    add(v, "低", "カタカナの固有名詞・商品名・人名等の可能性があります。");
-  });
-
-  const quoted = [...text.matchAll(/[「『“"]([^」』”"]{2,30})[」』”"]/g)].map(m=>m[1]);
-  quoted.forEach(v => add(v, "低", "かぎ括弧内の名称・作品名等の可能性があります。"));
 
   return candidates;
 }
@@ -332,21 +318,6 @@ function checkLine(line, lineNo){
 
   const exclusions = [];
 
-  const parentheticalCandidates = detectParentheticalIdentity(text);
-  parentheticalCandidates.forEach(c => exclusions.push(c.value));
-  for(const c of parentheticalCandidates){
-    if(isKnownProperCandidate(c.value)) continue;
-    out.push({
-      line:lineNo,
-      verdict:"注意",
-      type:c.type,
-      confidence:c.confidence,
-      source:text,
-      suggestion:"",
-      reason:`「${c.value}」は${c.type === "人名候補" ? "人名" : "所属・団体"}として確認すべき候補です。${c.why}`
-    });
-  }
-
   const creditStructure = detectCreditStructure(text);
   if(creditStructure){
     exclusions.push(creditStructure.credit, creditStructure.rawCredit, creditStructure.name);
@@ -363,17 +334,6 @@ function checkLine(line, lineNo){
       });
     }
 
-    if(looksLikePersonName(creditStructure.name) && !isKnownProperCandidate(creditStructure.name)){
-      out.push({
-        line:lineNo,
-        verdict:"注意",
-        type:"人名候補",
-        confidence:"高",
-        source:text,
-        suggestion:"",
-        reason:`「${creditStructure.name}」は「${creditStructure.credit}」の後に置かれているため、人名として確認すべき候補です。正式な姓名表記を確認してください。`
-      });
-    }
   }
 
   const rolePersonCandidates = detectRoleAndPersonCandidates(text);
@@ -527,8 +487,13 @@ function makeAiPrompt(){
 - 「TW」「T.W.」「テロップ」などの管理記号は校閲対象の固有名詞として扱わない。
 - "Directed by" "Produced by" など一般的な英文クレジット表現は、固有名詞ではなく英文として扱う。
 - 英文はスペル・大文字小文字・語法の不自然さを確認する。
-- 「人物名（所属/コンビ/団体）」のような構造は、人物名と括弧内の所属・団体を分けて評価する。
+- 「人物名（所属/コンビ/団体）」のような構造は、人物名と括弧内の所属・団体を分けて評価する。ただし括弧があるだけで人物名・団体名と断定しない。
 - 「肩書き + 人名 + 敬称」の構造は、肩書きと人名を分けて評価する。
+- 「トリキリ」「右上」「左上」「右下」「左下」「サイドロゴ」「サイドマスコット」「エンドロール」「オフラインミス」などは制作指示・制作メモの可能性を先に検討する。
+- 年齢・日付・画面位置・一般名詞・鳴き声・見出し・造語を、数字・カタカナ・英字という理由だけで固有名詞扱いしない。
+- "ART" のような英単語は文脈で一般語か固有名詞かを判断する。
+- "Awakey?" のような番組固有表現は、一般英語のスペル規則だけで修正しない。
+- "Directed by" などの後ろは人物とは限らず、ユニット名・団体名の可能性もあるため、主体種別を文脈で判定する。
 - 固有名詞の正式表記を断定できない場合は、推測で修正候補を作らず「要確認」とする。
 - 機械判定が誤っていると思われる場合は、その旨を明示する。
 
@@ -543,7 +508,7 @@ ${machineFindings.length
 【あなたに行ってほしいこと】
 1. 各テロップを意味単位に分解する。
    例：肩書き / 人名 / 所属・団体 / 作品名 / 商品名 / 一般英文 / その他
-2. 機械一次チェックの誤検出を指摘する。
+2. 機械一次チェックの誤検出を指摘する。特に「一般語・制作指示・数字・日付を固有名詞扱いしていないか」を確認する。
 3. 誤字脱字、誤変換、スペル、大文字小文字、正式名称、人物名、団体名、読み・ルビの要確認箇所を抽出する。
 4. 確証のない固有名詞は「要確認」とする。
 5. 問題がない部分は無理に指摘しない。
