@@ -97,6 +97,51 @@ function isKnownProperCandidate(candidate){
   });
 }
 
+function detectRoleAndPersonCandidates(text){
+  const normalized = normalize(text);
+  const out = [];
+
+  // 肩書きでよく使われる語。単独のカタカナ固有名詞として扱わず、
+  // 「肩書き + 人名」の構造として評価する。
+  const rolePattern = /([一-龠々ヶヵぁ-んァ-ヶーA-Za-z0-9・]+?(?:アドバイザー|コンサルタント|ジャーナリスト|アナウンサー|キャスター|ディレクター|プロデューサー|フォトグラファー|デザイナー|評論家|専門家|研究家|料理研究家|気象予報士|教授|准教授|講師|医師|医者|弁護士|税理士|会計士|建築士|作家|脚本家|監督|社長|会長|代表|店主|院長))/;
+  const roleMatch = normalized.match(rolePattern);
+
+  // 「毎田祥子先生」のような敬称付き人名を優先して拾う。
+  const honorificMatch = normalized.match(/([一-龠々]{2,8})(先生|氏|さん|様|博士)(?:\s|$|[、。,.!！?？])/);
+  // 肩書きの直後にある漢字名も候補にする（敬称なしも想定）。
+  const roleNameMatch = roleMatch
+    ? normalized.slice((roleMatch.index || 0) + roleMatch[0].length).match(/^\s*([一-龠々]{2,8})(?:(先生|氏|さん|様|博士))?/)
+    : null;
+
+  if(roleMatch){
+    out.push({
+      type:"肩書き候補",
+      value:roleMatch[1],
+      confidence:"中",
+      why:"人名の前に置かれる肩書き・職種表記の可能性があります。肩書きの正式表記や番組内表記ルールを確認してください。"
+    });
+  }
+
+  const person = honorificMatch
+    ? {value:honorificMatch[1], honorific:honorificMatch[2], confidence:"高"}
+    : roleNameMatch
+      ? {value:roleNameMatch[1], honorific:roleNameMatch[2] || "", confidence:roleNameMatch[2] ? "高" : "中"}
+      : null;
+
+  if(person){
+    out.push({
+      type:"人名候補",
+      value:person.value,
+      confidence:person.confidence,
+      why:person.honorific
+        ? `「${person.honorific}」が付いているため人名の可能性が高いです。姓名の漢字・表記を確認してください。`
+        : "肩書きの直後にあるため人名の可能性があります。姓名の漢字・表記を確認してください。"
+    });
+  }
+
+  return out;
+}
+
 function detectUnknownProperCandidates(text){
   const candidates = [];
   const add = (value, confidence, why) => {
@@ -113,7 +158,14 @@ function detectUnknownProperCandidates(text){
   latin.forEach(v => add(v, "中", "英字の大文字表記・ブランド名・団体名の可能性があります。"));
 
   const kata = text.match(/[ァ-ヶー]{4,}/g) || [];
-  kata.forEach(v => add(v, "低", "カタカナの固有名詞・商品名・人名等の可能性があります。"));
+  const genericRoleWords = new Set([
+    "アドバイザー","コンサルタント","ジャーナリスト","アナウンサー","キャスター",
+    "ディレクター","プロデューサー","フォトグラファー","デザイナー"
+  ]);
+  kata.forEach(v => {
+    if(genericRoleWords.has(v)) return;
+    add(v, "低", "カタカナの固有名詞・商品名・人名等の可能性があります。");
+  });
 
   const quoted = [...text.matchAll(/[「『“"]([^」』”"]{2,30})[」』”"]/g)].map(m=>m[1]);
   quoted.forEach(v => add(v, "低", "かぎ括弧内の名称・作品名等の可能性があります。"));
@@ -188,6 +240,21 @@ function checkLine(line, lineNo){
         reason:`「${g.term}」: ${g.note}`
       });
     }
+  }
+
+  const rolePersonCandidates = detectRoleAndPersonCandidates(text);
+  for(const c of rolePersonCandidates){
+    const known = isKnownProperCandidate(c.value);
+    if(known) continue;
+    out.push({
+      line:lineNo,
+      verdict:"注意",
+      type:c.type,
+      confidence:c.confidence,
+      source:text,
+      suggestion:"",
+      reason:`「${c.value}」は${c.type === "人名候補" ? "人名" : "肩書き"}として確認すべき候補です。${c.why}`
+    });
   }
 
   const unknownProper = detectUnknownProperCandidates(text);
@@ -296,7 +363,7 @@ function renderLogs(logs){
 
 function makeAiPrompt(){
   const rows = state.lastResults.filter(x =>
-    ["固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
+    ["人名候補","肩書き候補","固有名詞候補","未登録固有名詞","字体注意","読み・ルビ注意","読み要確認","正式名称注意"].includes(x.type)
   );
   const src = state.lastTargets.map(t => `${t.lineNo}行目: ${t.text}`).join("\n");
   const focus = rows.map(r=>`- ${r.line}行目 [確信度:${r.confidence || "低"}]: ${r.source}\n  機械判定: ${r.reason}`).join("\n");
