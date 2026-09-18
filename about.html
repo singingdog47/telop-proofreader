@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>このシステムについて | 映像テロップ校閲システム</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>このシステムについて</h1>
+      <p>映像テロップ校閲システム</p>
+    </div>
+    <div class="header-actions">
+      <a class="settings-link" href="./index.html">← 校閲画面</a>
+      <a class="settings-link" href="./auth.html">ログイン画面</a>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>何をするシステム？</h2>
+      <p>テロップ原稿の表記、固有名詞、正式名称、読み・ルビ、字体などをチェックし、見落としや確認が必要な箇所を提示する制作支援ツールです。</p>
+      <p><strong>自動的に「正解」を決めるのではなく、共有辞書・機械チェック・必要に応じたAI確認を組み合わせ、最終的な判断を人が行う</strong>ことを前提としています。</p>
+    </section>
+    <section class="panel">
+      <h2>チェックできること</h2>
+      <ul>
+        <li>表記ミス・表記揺れ：登録したNG表記や推奨表記と照合します。</li>
+        <li>固有名詞：人名、企業名、団体名、施設名、地名などの正式表記を確認します。</li>
+        <li>未登録の固有名詞候補：辞書にない名称らしい語も「要確認」として拾います。</li>
+        <li>正式名称・略称：省略名、通称、旧称などを正式名称候補と照合します。</li>
+        <li>読み・ルビ：難読地名や人名など、読みの確認が必要な箇所を提示します。</li>
+        <li>字体・フォント：字形や表示環境で注意が必要な文字・語句を確認します。</li>
+      </ul>
+    </section>
+    <section class="panel">
+      <h2>基本的な使い方</h2>
+      <p>校閲画面にテロップ原稿を貼り付けて「校閲する」を押します。結果には行番号、判定、種別、確信度、原文、修正候補、理由が表示されます。必要に応じてCSV出力やAI確認用テキストのコピーもできます。</p>
+    </section>
+    <section class="panel">
+      <h2>確信度について</h2>
+      <p><b class="confidence-badge confidence-high">高</b> は共有辞書や明示ルールに基づく指摘、<b class="confidence-badge confidence-medium">中</b> は類似・パターン判定、<b class="confidence-badge confidence-low">低</b> は推定を含む指摘です。特に「低」は自動修正せず、目視や公式情報での確認を優先してください。</p>
+    </section>
+    <section class="panel">
+      <h2>共有辞書について</h2>
+      <p>制作現場で確認した表記や読みを管理者が辞書へ登録すると、すべての運用者が同じ最新版を利用できます。一般の運用者は辞書を参照できますが、共通辞書の変更は管理者だけが行えます。</p>
+    </section>
+    <section class="panel">
+      <h2>AIとの役割分担</h2>
+      <p>まず共有辞書とルールで機械的にチェックし、文脈判断などが必要な箇所は「AI確認用テキスト」としてまとめられます。現段階ではAI APIへ原稿を自動送信せず、必要な場合だけ利用者がChatGPT等で二次確認する方式です。</p>
+    </section>
+    <section class="panel">
+      <h2>データとプライバシー</h2>
+      <p>入力したテロップ原稿本文は共有データベースへ保存しません。共有DBに記録するのは、利用日時、運用者、チェックした行数、指摘数などの運用情報です。AI確認を行う場合は、コピーする内容を確認したうえで利用してください。</p>
+    </section>
+    <section class="panel">
+      <h2>管理者と運用者</h2>
+      <p><strong>管理者</strong>は共有辞書、運用者、新規登録設定、全体の運用ログを管理できます。<strong>運用者</strong>は校閲と共有辞書の利用、自分の運用ログの確認ができます。</p>
+    </section>
+    <section class="panel">
+      <h2>このツールの考え方</h2>
+      <p>目的は校閲担当者を置き換えることではなく、見落としを減らし、制作現場の校閲ノウハウを共有・蓄積することです。辞書を育てることで、その制作現場に合ったチェック環境へ更新していきます。</p>
+    </section>
+  </main>
+</body>
+</html>
