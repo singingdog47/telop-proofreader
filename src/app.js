@@ -399,10 +399,15 @@ function checkLine(line, lineNo){
   return out;
 }
 
+function isExplicitAdministrativePlace(term){
+  return /(?:都|道|府|県|市|区|町|村|郡)$/.test(normalize(term));
+}
+
 function postalReadingRows(matches){
   const rows=[];
   for(const m of matches || []){
     for(const p of m.places || []){
+      if(!isExplicitAdministrativePlace(p.term)) continue;
       const readings=(p.readings || []).map(r=>r.roman).filter(Boolean);
       if(!readings.length) continue;
       rows.push({
@@ -502,7 +507,7 @@ function makeAiPrompt(){
   }));
 
   const postalRefs = (state.postalPlaceMatches || []).flatMap(m =>
-    (m.places || []).map(p => ({
+    (m.places || []).filter(p=>isExplicitAdministrativePlace(p.term)).map(p => ({
       line:m.line,
       term:p.term,
       roman:(p.readings || []).map(r=>r.roman).filter(Boolean)
@@ -541,8 +546,10 @@ ${postalRefs.length
   ? postalRefs.map(p => `- ${p.line}行目: ${p.term} → ${p.roman.join(" / ")}`).join("\n")
   : "該当なし"}
 
-この地名データは、漢字表記と読みの照合用の一次資料として優先してください。
-ただし、郵便番号データの町域表記と番組上の地名表記が常に完全一致するとは限らないため、文脈と公式自治体表記も考慮してください。
+この日本郵便データは、文章側で先に「地名」と判断できる語の読みを照合するためだけに使用してください。
+日本郵便データに同じ文字列が存在するという理由だけで、その語を地名と判定してはいけません。
+人名・姓・一般名詞・大学名・団体名などに同形語がある場合は、文脈上の役割を優先してください。
+郵便番号データの町域表記と番組上の地名表記が常に完全一致するとは限らないため、必要に応じて自治体等の公式表記も確認してください。
 
 【機械一次チェック結果】
 ${machineFindings.length
@@ -642,7 +649,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try{
       const postal = await Backend.postalPlaceReadings(targets.map(t=>({line:t.lineNo,text:t.text})));
-      state.postalPlaceMatches = postal.matches || [];
+      state.postalPlaceMatches = (postal.matches || []).map(m=>({
+        ...m,
+        places:(m.places || []).filter(p=>isExplicitAdministrativePlace(p.term))
+      })).filter(m=>m.places.length);
 
       // 日本郵便データで読みが確認できた行については、一般的な「読み要確認」を置き換える。
       results = results.filter(r => {
