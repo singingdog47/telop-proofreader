@@ -17,27 +17,27 @@ function normalize(s){
 function extractTwTargets(source){
   const rawLines = String(source ?? "").split(/\r?\n/);
   const targets = [];
-  let inTwBlock = false;
+  let inTargetBlock = false;
 
   rawLines.forEach((rawLine, index) => {
     const normalized = String(rawLine ?? "").normalize("NFKC");
     const trimmed = normalized.trim();
 
     if(!trimmed){
-      inTwBlock = false;
+      inTargetBlock = false;
       return;
     }
 
-    // 「4桁の数字 + TW」で始まる行をテロップ開始行として扱う。
-    // 全角数字・全角英字も NFKC 正規化後に判定する。
-    const tw = trimmed.match(/^(\d{4})\s+TW(?:\s+|$)(.*)$/i);
-    if(tw){
-      inTwBlock = true;
-      const body = (tw[2] || "").trim();
+    // 「4桁の数字 + スペース + 本文」を対象とし、直後の独立したTWは管理記号として取り除く。
+    // 全角数字・全角スペース・全角TWも NFKC 正規化後に判定する。
+    const numbered = trimmed.match(/^(\d{4})\s+(.+)$/);
+    if(numbered){
+      const body = numbered[2].replace(/^TW(?:\s+|$)/i,"").trim();
+      inTargetBlock = Boolean(body);
       if(body){
         targets.push({
           lineNo:index + 1,
-          telopNo:tw[1],
+          telopNo:numbered[1],
           text:body,
           isContinuation:false
         });
@@ -45,21 +45,20 @@ function extractTwTargets(source){
       return;
     }
 
-    // 別の4桁管理番号が始まったら、TWブロックを終了。
-    if(/^\d{4}(?:\s|$)/.test(trimmed)){
-      inTwBlock = false;
+    // 4桁の管理番号だけの行では継続判定を終了する。
+    if(/^\d{4}$/.test(trimmed)){
+      inTargetBlock = false;
       return;
     }
 
     // << ... >>、【...】、※... など明らかな管理・注記行で終了。
     if(/^(?:<<|【|※)/.test(trimmed)){
-      inTwBlock = false;
+      inTargetBlock = false;
       return;
     }
 
-    // TW行の直後に続く改行テロップも同じ検証対象に含める。
-    // 添付例の「Directed by ...」のような継続行を想定。
-    if(inTwBlock){
+    // 対象行に続く改行テロップも、空行または次の管理行まで検証対象に含める。
+    if(inTargetBlock){
       targets.push({
         lineNo:index + 1,
         telopNo:"",
@@ -672,10 +671,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const targetStartCount = targets.filter(t => !t.isContinuation).length;
     if(targets.length === 0){
-      showSystemMessage("検証対象が見つかりませんでした。「4桁の数字 + TW」で始まる行を確認してください。", "error");
+      showSystemMessage("検証対象が見つかりませんでした。「4桁の数字 + スペース + 本文」で始まる行を確認してください。", "error");
       return;
     }
-    showSystemMessage(`検証対象: TWテロップ ${targetStartCount}件 / 対象行 ${targets.length}行（入力全体 ${rawLineCount}行）`, "success");
+    showSystemMessage(`検証対象: 番号付きテロップ ${targetStartCount}件 / 対象行 ${targets.length}行（入力全体 ${rawLineCount}行）`, "success");
 
     try{
       await Backend.addOperationLog({
