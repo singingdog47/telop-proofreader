@@ -1,0 +1,40 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # 12:15 JST every day (03:15 UTC). GitHub cron may start a little late.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send lightweight database activity
+        shell: bash
+        env:
+          SUPABASE_URL: "https://pxiogpphwffpcsvlpkyh.supabase.co"
+          SUPABASE_PUBLISHABLE_KEY: "sb_publishable_Y7WpR2Zs_PC92Lniyu6hRQ_nVdSg8R0"
+        run: |
+          set -euo pipefail
+          endpoint="$SUPABASE_URL/rest/v1/app_settings?select=id&limit=1"
+
+          # A few tiny user-database reads each day. The publishable key is public
+          # by design; RLS remains the security boundary.
+          for i in 1 2 3; do
+            http_code="$(curl               --silent               --show-error               --output /tmp/supabase_keepalive_body               --write-out "%{http_code}"               --header "apikey: $SUPABASE_PUBLISHABLE_KEY"               --header "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY"               "$endpoint")"
+
+            if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+              echo "Supabase keepalive failed with HTTP $http_code"
+              cat /tmp/supabase_keepalive_body || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "Supabase keepalive completed successfully."
